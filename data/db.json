@@ -3,7 +3,7 @@
     {
       "id": "user_admin_001",
       "username": "admin",
-      "password": "$2a$10$Y0wUTzshn1Lb.zQ8qUeype5G2RTx6Zj77.vn8g1aUL0M1r67kcjMm",
+      "password": "$2a$10$eRvGGyd9Ui8hIammUWrhb.COAOoi/yCDKFT12OOX.r/y7.y2FalFC",
       "role": "admin",
       "name": "系统管理员",
       "createdAt": "2024-01-01T00:00:00Z"
@@ -11,7 +11,7 @@
     {
       "id": "user_restock_001",
       "username": "restocker",
-      "password": "$2a$10$xDTg2KOm7w2Ln.5o21PZ7.U49GaYAG0qwxB9yTCN00HxlWsDxfc7i",
+      "password": "$2a$10$vhCYjxqOos0GJSVHn.5dmudboQBwKxf6wYMJ2Oi.s1IsesIei3xma",
       "role": "restocker",
       "name": "张三",
       "createdAt": "2024-01-01T00:00:00Z"
@@ -19,7 +19,7 @@
     {
       "id": "user_restock_002",
       "username": "restocker2",
-      "password": "$2a$10$xDTg2KOm7w2Ln.5o21PZ7.U49GaYAG0qwxB9yTCN00HxlWsDxfc7i",
+      "password": "$2a$10$vhCYjxqOos0GJSVHn.5dmudboQBwKxf6wYMJ2Oi.s1IsesIei3xma",
       "role": "restocker",
       "name": "李四",
       "createdAt": "2024-01-01T00:00:00Z"
@@ -27,7 +27,7 @@
     {
       "id": "user_inspect_001",
       "username": "inspector",
-      "password": "$2a$10$STGhv/PiwRGPrihOuhq8HuS9Ke/ObvutrKpHXfYsr18zJ47Lo.Mky",
+      "password": "$2a$10$Rh3qP2QRPuBhs2rIWHsfi.7X3FtgCdRVEe91HBAI51iB0CpiNyjru",
       "role": "inspector",
       "name": "王五",
       "createdAt": "2024-01-01T00:00:00Z"
@@ -190,23 +190,7 @@
       "createdAt": "2024-01-01T00:00:00Z"
     }
   ],
-  "tasks": [
-    {
-      "id": "task_d1f1dc83",
-      "machineId": "VM001",
-      "routeId": "route_001",
-      "assigneeId": "user_restock_001",
-      "status": "待补货",
-      "window": "早班",
-      "scheduledTime": "2026-06-20T01:53:58.445Z",
-      "arrivedTime": null,
-      "completedTime": null,
-      "inspected": false,
-      "note": "",
-      "createdBy": "user_admin_001",
-      "createdAt": "2026-06-20T01:53:58.445Z"
-    }
-  ],
+  "tasks": [],
   "restockRecords": [],
   "temperatureRecords": [],
   "expiredRemovals": [],

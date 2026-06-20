@@ -87,33 +87,45 @@ function detectTemperatureAbnormal() {
 
 function detectExpiredOmission() {
   const anomalies = [];
-  const today = getDateString();
 
   const pendingTasks = db.get('tasks')
-    .filter(t => ['待补货', '补货中', '待抽检'].includes(t.status))
+    .filter(t => ['补货中', '待抽检'].includes(t.status))
     .value();
 
   for (const task of pendingTasks) {
-    const products = db.get('products').value();
     const machineInfo = getMachineInfo(task.machineId);
 
     const restockRecords = db.get('restockRecords')
       .filter({ taskId: task.id })
       .value();
 
+    if (restockRecords.length === 0) continue;
+
     const expiredRemovals = db.get('expiredRemovals')
       .filter({ taskId: task.id })
       .value();
 
-    const shortShelfProducts = products.filter(p => p.shelfLifeDays <= 60);
+    const taskExpiredProductIds = new Set(
+      expiredRemovals.flatMap(r => (r.items || []).map(i => i.productId))
+    );
 
-    if (shortShelfProducts.length > 0 && expiredRemovals.length === 0 && restockRecords.length > 0) {
+    const restockedShortShelfWithoutRemoval = restockRecords.some(r => {
+      if (!r.items) return false;
+      return r.items.some(item => {
+        if ((item.restockQuantity || 0) <= 0) return false;
+        const product = db.get('products').find({ id: item.productId }).value();
+        if (!product || product.shelfLifeDays > 60) return false;
+        return !taskExpiredProductIds.has(item.productId);
+      });
+    });
+
+    if (restockedShortShelfWithoutRemoval) {
       anomalies.push({
         machineId: task.machineId,
         machineName: machineInfo ? machineInfo.name : task.machineId,
         taskId: task.id,
         type: ANOMALY_TYPES.EXPIRED_OMISSION,
-        description: `任务 ${task.id} 存在短保质期商品但未记录临期移出`,
+        description: `任务 ${task.id} 补充了短保质期商品但未记录临期移出`,
         severity: 'medium',
         detectedAt: getNowISO()
       });
@@ -157,28 +169,29 @@ function detectInspectionMissing() {
   const anomalies = [];
   const now = new Date();
 
-  const completedTasks = db.get('tasks')
-    .filter(t => t.status === '已完成' && !t.inspected)
+  const pendingInspectionTasks = db.get('tasks')
+    .filter(t => t.status === '待抽检' && !t.inspected)
     .value();
 
-  for (const task of completedTasks) {
-    if (task.completedAt) {
-      const completed = new Date(task.completedAt);
-      const daysDiff = daysBetween(completed, now);
+  for (const task of pendingInspectionTasks) {
+    const completedAt = task.completedTime || task.completedAt;
+    if (!completedAt) continue;
 
-      if (daysDiff >= 2) {
-        const machineInfo = getMachineInfo(task.machineId);
-        anomalies.push({
-          machineId: task.machineId,
-          machineName: machineInfo ? machineInfo.name : task.machineId,
-          taskId: task.id,
-          type: ANOMALY_TYPES.INSPECTION_MISSING,
-          description: `任务 ${task.id} 完成已 ${daysDiff} 天未进行督导抽检`,
-          severity: 'medium',
-          detectedAt: getNowISO(),
-          detail: { daysSinceCompleted: daysDiff }
-        });
-      }
+    const completed = new Date(completedAt);
+    const daysDiff = daysBetween(completed, now);
+
+    if (daysDiff >= 2) {
+      const machineInfo = getMachineInfo(task.machineId);
+      anomalies.push({
+        machineId: task.machineId,
+        machineName: machineInfo ? machineInfo.name : task.machineId,
+        taskId: task.id,
+        type: ANOMALY_TYPES.INSPECTION_MISSING,
+        description: `任务 ${task.id} 提交完成已 ${daysDiff} 天，仍处于待抽检状态未进行督导抽检`,
+        severity: 'medium',
+        detectedAt: getNowISO(),
+        detail: { daysSinceCompleted: daysDiff, currentStatus: task.status }
+      });
     }
   }
 

@@ -198,10 +198,8 @@ router.get('/', (req, res) => {
 
   if (groupId) {
     enrichedTasks = enrichedTasks.filter(t => {
-      const machine = db.get('machines').find({ id: t.machineId }).value();
-      if (!machine) return false;
       const restockRecords = db.get('restockRecords').filter({ taskId: t.id }).value();
-      if (restockRecords.length === 0) return true;
+      if (restockRecords.length === 0) return false;
       return restockRecords.some(r =>
         r.items && r.items.some(item => {
           const product = db.get('products').find({ id: item.productId }).value();
