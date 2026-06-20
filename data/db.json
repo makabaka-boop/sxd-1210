@@ -316,7 +316,108 @@
       "reviewNote": "整改到位，已完成",
       "reviewedBy": "user_inspect_001",
       "reviewedAt": "2026-06-20T03:11:28.247Z",
-      "createdAt": "2026-06-20T03:11:06.178Z"
+      "createdAt": "2026-06-20T03:11:06.178Z",
+      "deadline": "2026-06-22T03:11:06.178Z",
+      "reviewDeadline": null,
+      "reopenDeadline": null,
+      "riskLevel": "low",
+      "isOverdue": false,
+      "overdueAt": null,
+      "overdueReason": "",
+      "escalationCount": 0
+    }
+  ],
+  "rectificationTimeLimits": [
+    {
+      "id": "tl_default",
+      "name": "默认整改时限",
+      "scope": "global",
+      "scopeValue": "default",
+      "rectifyHours": 48,
+      "reviewHours": 24,
+      "reopenRectifyHours": 24,
+      "escalationHours": 24,
+      "enabled": true,
+      "createdAt": "2024-01-01T00:00:00Z",
+      "updatedAt": "2024-01-01T00:00:00Z"
+    },
+    {
+      "id": "tl_anomaly_high",
+      "name": "高危异常整改时限",
+      "scope": "anomalySeverity",
+      "scopeValue": "high",
+      "rectifyHours": 24,
+      "reviewHours": 12,
+      "reopenRectifyHours": 12,
+      "escalationHours": 12,
+      "enabled": true,
+      "createdAt": "2024-01-01T00:00:00Z",
+      "updatedAt": "2024-01-01T00:00:00Z"
+    },
+    {
+      "id": "tl_anomaly_medium",
+      "name": "中危异常整改时限",
+      "scope": "anomalySeverity",
+      "scopeValue": "medium",
+      "rectifyHours": 48,
+      "reviewHours": 24,
+      "reopenRectifyHours": 24,
+      "escalationHours": 24,
+      "enabled": true,
+      "createdAt": "2024-01-01T00:00:00Z",
+      "updatedAt": "2024-01-01T00:00:00Z"
+    },
+    {
+      "id": "tl_type_temp",
+      "name": "温区异常整改时限",
+      "scope": "anomalyType",
+      "scopeValue": "温区读数异常",
+      "rectifyHours": 12,
+      "reviewHours": 6,
+      "reopenRectifyHours": 12,
+      "escalationHours": 6,
+      "enabled": true,
+      "createdAt": "2024-01-01T00:00:00Z",
+      "updatedAt": "2024-01-01T00:00:00Z"
+    },
+    {
+      "id": "tl_type_shortage",
+      "name": "连续缺品整改时限",
+      "scope": "anomalyType",
+      "scopeValue": "连续缺品",
+      "rectifyHours": 24,
+      "reviewHours": 12,
+      "reopenRectifyHours": 12,
+      "escalationHours": 12,
+      "enabled": true,
+      "createdAt": "2024-01-01T00:00:00Z",
+      "updatedAt": "2024-01-01T00:00:00Z"
+    },
+    {
+      "id": "tl_rect_inspection",
+      "name": "督导抽检整改时限",
+      "scope": "rectificationType",
+      "scopeValue": "待整改",
+      "rectifyHours": 48,
+      "reviewHours": 24,
+      "reopenRectifyHours": 24,
+      "escalationHours": 24,
+      "enabled": true,
+      "createdAt": "2024-01-01T00:00:00Z",
+      "updatedAt": "2024-01-01T00:00:00Z"
+    },
+    {
+      "id": "tl_0e321467",
+      "name": "测试配置-临期处理",
+      "scope": "anomalyType",
+      "scopeValue": "临期处理遗漏",
+      "rectifyHours": 40,
+      "reviewHours": 18,
+      "reopenRectifyHours": 24,
+      "escalationHours": 10,
+      "enabled": true,
+      "createdAt": "2026-06-20T05:25:52.732Z",
+      "updatedAt": "2026-06-20T05:25:52.735Z"
     }
   ]
 }

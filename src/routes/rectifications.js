@@ -1,14 +1,106 @@
 const express = require('express');
 const db = require('../db');
 const { authMiddleware, requireRole } = require('../middleware/auth');
-const { generateId, getNowISO, getMachineInfo } = require('../utils/helpers');
+const { generateId, getNowISO, getMachineInfo, addHours, getRemainingTime, escalateRiskLevel, getOverdueReason } = require('../utils/helpers');
 const { detectAndSave } = require('../utils/anomalyDetector');
+const { matchTimeLimit, getInitialRiskLevel } = require('../utils/timeLimitUtils');
 
 const router = express.Router();
 router.use(authMiddleware);
 
 const RECTIFICATION_STATUSES = ['待整改', '整改中', '待复核', '已完成', '复核不通过'];
 const REVIEW_CONCLUSIONS = ['通过', '不通过'];
+
+function getAnomalyInfoForTask(taskId, machineId) {
+  const anomalies = db.get('anomalies').value();
+  const taskAnomalies = anomalies.filter(a =>
+    (a.taskId === taskId || a.machineId === machineId) && !a.resolved
+  );
+  if (taskAnomalies.length === 0) return { anomalyType: null, anomalySeverity: null };
+  taskAnomalies.sort((a, b) => {
+    const sevOrder = { high: 3, medium: 2, low: 1 };
+    return (sevOrder[b.severity] || 0) - (sevOrder[a.severity] || 0);
+  });
+  return {
+    anomalyType: taskAnomalies[0].type,
+    anomalySeverity: taskAnomalies[0].severity
+  };
+}
+
+function processOverdueForRect(rect, now) {
+  now = now || new Date();
+  let updated = { ...rect };
+  let isChanged = false;
+
+  if (rect.status === '待整改' || rect.status === '整改中') {
+    if (rect.deadline && new Date(rect.deadline) <= now && !rect.isOverdue) {
+      updated.isOverdue = true;
+      updated.overdueAt = now.toISOString();
+      updated.overdueReason = '整改超时未提交';
+      updated.riskLevel = escalateRiskLevel(rect.riskLevel || 'low');
+      updated.escalationCount = (rect.escalationCount || 0) + 1;
+      isChanged = true;
+    } else if (rect.isOverdue && rect.deadline && rect.overdueAt) {
+      const hoursSinceEscalation = (now - new Date(rect.overdueAt)) / (1000 * 60 * 60);
+      const escalationHours = rect._escalationHours || 24;
+      if (hoursSinceEscalation >= escalationHours) {
+        const levels = ['low', 'medium', 'high', 'critical'];
+        const currentIdx = levels.indexOf(updated.riskLevel || 'low');
+        if (currentIdx < levels.length - 1 && rect.status !== '整改中') {
+          updated.riskLevel = levels[currentIdx + 1];
+          updated.escalationCount = (rect.escalationCount || 0) + 1;
+          updated.overdueAt = now.toISOString();
+          isChanged = true;
+        }
+      }
+    }
+  }
+
+  if (rect.status === '待复核') {
+    if (rect.reviewDeadline && new Date(rect.reviewDeadline) <= now && !rect.isOverdue) {
+      updated.isOverdue = true;
+      updated.overdueAt = now.toISOString();
+      updated.overdueReason = '复核超时未处理';
+      updated.riskLevel = escalateRiskLevel(rect.riskLevel || 'low');
+      updated.escalationCount = (rect.escalationCount || 0) + 1;
+      isChanged = true;
+    }
+  }
+
+  if (rect.status === '复核不通过') {
+    if (rect.reopenDeadline && new Date(rect.reopenDeadline) <= now && !rect.isOverdue) {
+      updated.isOverdue = true;
+      updated.overdueAt = now.toISOString();
+      updated.overdueReason = '复核不通过后重新整改超时';
+      updated.riskLevel = escalateRiskLevel(rect.riskLevel || 'low');
+      updated.escalationCount = (rect.escalationCount || 0) + 1;
+      isChanged = true;
+    }
+  }
+
+  return { updated, isChanged };
+}
+
+function processAllOverdueRectifications() {
+  const now = new Date();
+  const rects = db.get('rectifications').value();
+  let changedCount = 0;
+
+  for (const rect of rects) {
+    if (rect.status === '已完成') continue;
+    const { updated, isChanged } = processOverdueForRect(rect, now);
+    if (isChanged) {
+      const { _escalationHours, ...rest } = updated;
+      db.get('rectifications')
+        .find({ id: rect.id })
+        .assign(rest)
+        .write();
+      changedCount++;
+    }
+  }
+
+  return changedCount;
+}
 
 function enrichRectification(rect) {
   const machineInfo = getMachineInfo(rect.machineId);
@@ -18,8 +110,38 @@ function enrichRectification(rect) {
   const task = rect.taskId ? db.get('tasks').find({ id: rect.taskId }).value() : null;
   const inspection = rect.inspectionId ? db.get('inspections').find({ id: rect.inspectionId }).value() : null;
 
+  const { updated, isChanged } = processOverdueForRect(rect);
+  const currentRect = isChanged ? updated : rect;
+
+  if (isChanged) {
+    const { _escalationHours, ...rest } = currentRect;
+    db.get('rectifications')
+      .find({ id: rect.id })
+      .assign(rest)
+      .write();
+  }
+
+  let activeDeadline = null;
+  if (currentRect.status === '待整改' || currentRect.status === '整改中') {
+    activeDeadline = currentRect.deadline;
+  } else if (currentRect.status === '待复核') {
+    activeDeadline = currentRect.reviewDeadline;
+  } else if (currentRect.status === '复核不通过') {
+    activeDeadline = currentRect.reopenDeadline;
+  }
+
+  const remainingInfo = activeDeadline ? getRemainingTime(activeDeadline) : null;
+  const overdueReason = currentRect.isOverdue ? (currentRect.overdueReason || getOverdueReason(currentRect)) : '';
+
+  const riskLevelText = {
+    low: '低风险',
+    medium: '中风险',
+    high: '高风险',
+    critical: '严重风险'
+  }[currentRect.riskLevel] || '未知';
+
   return {
-    ...rect,
+    ...currentRect,
     machineName: machineInfo ? machineInfo.name : null,
     areaId: machineInfo ? machineInfo.areaId : null,
     areaName: machineInfo ? machineInfo.areaName : null,
@@ -31,21 +153,39 @@ function enrichRectification(rect) {
     taskStatus: task ? task.status : null,
     inspectionConclusion: inspection ? inspection.conclusion : null,
     rectificationDuration: (() => {
-      const created = rect.createdAt ? new Date(rect.createdAt) : null;
+      const created = currentRect.createdAt ? new Date(currentRect.createdAt) : null;
       if (!created) return null;
-      const end = rect.reviewedAt ? new Date(rect.reviewedAt) : (rect.submittedAt ? new Date(rect.submittedAt) : null);
+      const end = currentRect.reviewedAt ? new Date(currentRect.reviewedAt) : (currentRect.submittedAt ? new Date(currentRect.submittedAt) : null);
       if (!end) return null;
       return Math.round((end - created) / (1000 * 60 * 60));
-    })()
+    })(),
+    activeDeadline,
+    remainingHours: remainingInfo ? remainingInfo.remainingHours : null,
+    remainingDays: remainingInfo ? remainingInfo.remainingDays : null,
+    remainingText: remainingInfo ? remainingInfo.remainingText : null,
+    isOverdue: currentRect.isOverdue || false,
+    overdueReason,
+    urgencyLevel: remainingInfo ? remainingInfo.urgencyLevel : 'normal',
+    riskLevelText,
+    escalationCount: currentRect.escalationCount || 0
   };
 }
 
-function createRectification(taskId, inspectionId, inspectorId) {
+function createRectification(taskId, inspectionId, inspectorId, options = {}) {
   const task = db.get('tasks').find({ id: taskId }).value();
   if (!task) return null;
 
   const inspection = db.get('inspections').find({ id: inspectionId }).value();
-  const machineInfo = getMachineInfo(task.machineId);
+  const rectificationType = inspection ? inspection.conclusion : '待整改';
+  const { anomalyType: optAnomalyType, anomalySeverity: optAnomalySeverity } = options;
+
+  const { anomalyType, anomalySeverity } = optAnomalyType
+    ? { anomalyType: optAnomalyType, anomalySeverity: optAnomalySeverity }
+    : getAnomalyInfoForTask(taskId, task.machineId);
+
+  const timeLimit = matchTimeLimit({ anomalyType, anomalySeverity, rectificationType });
+  const now = getNowISO();
+  const riskLevel = getInitialRiskLevel({ anomalySeverity });
 
   const rectification = {
     id: generateId('rect'),
@@ -55,7 +195,7 @@ function createRectification(taskId, inspectionId, inspectorId) {
     inspectorId,
     inspectionId,
     status: '待整改',
-    rectificationType: inspection ? inspection.conclusion : '待整改',
+    rectificationType,
     rectificationSuggestion: inspection ? inspection.rectificationSuggestion : '',
     submittedDescription: '',
     submittedPhotos: [],
@@ -66,7 +206,19 @@ function createRectification(taskId, inspectionId, inspectorId) {
     reviewNote: '',
     reviewedBy: null,
     reviewedAt: null,
-    createdAt: getNowISO()
+    createdAt: now,
+    deadline: addHours(now, timeLimit.rectifyHours),
+    reviewDeadline: null,
+    reopenDeadline: null,
+    riskLevel,
+    isOverdue: false,
+    overdueAt: null,
+    overdueReason: '',
+    escalationCount: 0,
+    _matchedTimeLimitId: timeLimit.id || null,
+    _escalationHours: timeLimit.escalationHours || 24,
+    anomalyType,
+    anomalySeverity
   };
 
   db.get('rectifications').push(rectification).write();
@@ -335,6 +487,15 @@ router.post('/:id/submit', requireRole('restocker', 'admin'), (req, res) => {
     });
   }
 
+  const now = getNowISO();
+  const escalationHours = rect._escalationHours || 24;
+  const timeLimit = matchTimeLimit({
+    anomalyType: rect.anomalyType,
+    anomalySeverity: rect.anomalySeverity,
+    rectificationType: rect.rectificationType
+  });
+  const reviewHours = timeLimit.reviewHours || 24;
+
   db.get('rectifications')
     .find({ id })
     .assign({
@@ -343,7 +504,12 @@ router.post('/:id/submit', requireRole('restocker', 'admin'), (req, res) => {
       submittedPhotos: Array.isArray(photos) ? photos : [],
       submittedRestockItems: validatedRestockItems,
       submittedTempRecords: validatedTempRecords,
-      submittedAt: getNowISO()
+      submittedAt: now,
+      reviewDeadline: addHours(now, reviewHours),
+      isOverdue: false,
+      overdueAt: null,
+      overdueReason: '',
+      _escalationHours: escalationHours
     })
     .write();
 
@@ -379,22 +545,37 @@ router.post('/:id/review', requireRole('inspector', 'admin'), (req, res) => {
     return res.status(400).json({ error: '请选择有效的复核结论（通过/不通过）' });
   }
 
+  const now = getNowISO();
   const updates = {
     reviewConclusion: conclusion,
     reviewNote: note || '',
     reviewedBy: req.user.id,
-    reviewedAt: getNowISO()
+    reviewedAt: now
   };
 
   if (conclusion === '通过') {
     updates.status = '已完成';
+    updates.isOverdue = false;
+    updates.overdueAt = null;
+    updates.overdueReason = '';
 
     db.get('tasks')
       .find({ id: rect.taskId })
       .assign({ status: '已完成', rectificationCompleted: true })
       .write();
   } else {
+    const timeLimit = matchTimeLimit({
+      anomalyType: rect.anomalyType,
+      anomalySeverity: rect.anomalySeverity,
+      rectificationType: rect.rectificationType
+    });
+    const reopenHours = timeLimit.reopenRectifyHours || timeLimit.rectifyHours || 24;
+
     updates.status = '复核不通过';
+    updates.reopenDeadline = addHours(now, reopenHours);
+    updates.isOverdue = false;
+    updates.overdueAt = null;
+    updates.overdueReason = '';
 
     db.get('tasks')
       .find({ id: rect.taskId })
@@ -415,4 +596,12 @@ router.post('/:id/review', requireRole('inspector', 'admin'), (req, res) => {
   });
 });
 
-module.exports = { router, createRectification, enrichRectification };
+router.post('/process-overdue', requireRole('admin'), (req, res) => {
+  const count = processAllOverdueRectifications();
+  res.json({
+    message: `逾期处理完成，共更新 ${count} 条记录`,
+    updatedCount: count
+  });
+});
+
+module.exports = { router, createRectification, enrichRectification, processAllOverdueRectifications };

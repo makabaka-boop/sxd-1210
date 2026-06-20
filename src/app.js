@@ -12,6 +12,7 @@ const reportRoutes = require('./routes/reports');
 const { router: rectificationRoutes } = require('./routes/rectifications');
 
 const { detectAndSave } = require('./utils/anomalyDetector');
+const { processAllOverdueRectifications } = require('./routes/rectifications');
 
 const app = express();
 const PORT = process.env.PORT || 8142;
@@ -83,6 +84,14 @@ app.listen(PORT, () => {
     } catch (e) {
       console.error('[系统] 初始异常检测失败:', e.message);
     }
+    try {
+      const overdueCount = processAllOverdueRectifications();
+      if (overdueCount > 0) {
+        console.log(`[系统] 初始逾期处理完成，更新 ${overdueCount} 条记录`);
+      }
+    } catch (e) {
+      console.error('[系统] 初始逾期处理失败:', e.message);
+    }
   }, 1000);
 
   setInterval(() => {
@@ -91,6 +100,16 @@ app.listen(PORT, () => {
     } catch (e) {
     }
   }, 5 * 60 * 1000);
+
+  setInterval(() => {
+    try {
+      const count = processAllOverdueRectifications();
+      if (count > 0) {
+        console.log(`[系统] 定时逾期处理完成，更新 ${count} 条记录`);
+      }
+    } catch (e) {
+    }
+  }, 60 * 60 * 1000);
 });
 
 module.exports = app;

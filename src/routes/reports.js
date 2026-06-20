@@ -304,6 +304,16 @@ router.get('/rectification-summary', (req, res) => {
   const reviewFailedCount = enriched.filter(r => r.status === '复核不通过').length;
   const underReviewCount = enriched.filter(r => r.status === '待复核').length;
 
+  const overdueCount = enriched.filter(r => r.isOverdue).length;
+  const overduePendingCount = enriched.filter(r => r.isOverdue && (r.status === '待整改' || r.status === '整改中')).length;
+  const overdueReviewCount = enriched.filter(r => r.isOverdue && r.status === '待复核').length;
+  const overdueReopenCount = enriched.filter(r => r.isOverdue && r.status === '复核不通过').length;
+
+  const criticalRiskCount = enriched.filter(r => r.riskLevel === 'critical').length;
+  const highRiskCount = enriched.filter(r => r.riskLevel === 'high').length;
+  const mediumRiskCount = enriched.filter(r => r.riskLevel === 'medium').length;
+  const lowRiskCount = enriched.filter(r => r.riskLevel === 'low').length;
+
   const completedRects = enriched.filter(r => r.status === '已完成' && r.reviewedAt && r.createdAt);
   const avgDurationHours = completedRects.length > 0
     ? Number((completedRects.reduce((sum, r) => {
@@ -312,11 +322,20 @@ router.get('/rectification-summary', (req, res) => {
       }, 0) / completedRects.length).toFixed(2))
     : 0;
 
+  const overdueCompleted = enriched.filter(r => r.status === '已完成' && r.overdueAt);
+  const overdueCompletionRate = overdueCount > 0
+    ? Number(((overdueCompleted.length / overdueCount) * 100).toFixed(2))
+    : 0;
+
   const byType = {};
   const byStatus = {};
+  const byOverdueReason = {};
   for (const r of enriched) {
     byType[r.rectificationType] = (byType[r.rectificationType] || 0) + 1;
     byStatus[r.status] = (byStatus[r.status] || 0) + 1;
+    if (r.isOverdue && r.overdueReason) {
+      byOverdueReason[r.overdueReason] = (byOverdueReason[r.overdueReason] || 0) + 1;
+    }
   }
 
   const machineStats = {};
@@ -328,21 +347,86 @@ router.get('/rectification-summary', (req, res) => {
         areaId: r.areaId,
         areaName: r.areaName,
         routeName: r.routeName,
+        restockerId: r.restockerId,
+        restockerName: r.restockerName,
         totalCount: 0,
         pendingCount: 0,
         completedCount: 0,
-        reviewFailedCount: 0
+        reviewFailedCount: 0,
+        overdueCount: 0,
+        maxRiskLevel: 'low'
       };
     }
     machineStats[r.machineId].totalCount++;
     if (r.status === '待整改' || r.status === '整改中') machineStats[r.machineId].pendingCount++;
     if (r.status === '已完成') machineStats[r.machineId].completedCount++;
     if (r.status === '复核不通过') machineStats[r.machineId].reviewFailedCount++;
+    if (r.isOverdue) machineStats[r.machineId].overdueCount++;
+    const riskOrder = { critical: 4, high: 3, medium: 2, low: 1 };
+    if (riskOrder[r.riskLevel] > riskOrder[machineStats[r.machineId].maxRiskLevel]) {
+      machineStats[r.machineId].maxRiskLevel = r.riskLevel;
+    }
   }
 
   const topMachines = Object.values(machineStats)
-    .sort((a, b) => b.totalCount - a.totalCount)
+    .sort((a, b) => {
+      if (b.overdueCount !== a.overdueCount) return b.overdueCount - a.overdueCount;
+      return b.totalCount - a.totalCount;
+    })
     .slice(0, 10);
+
+  const routeStats = {};
+  for (const r of enriched) {
+    const rId = r.routeId || '未分配';
+    if (!routeStats[rId]) {
+      routeStats[rId] = {
+        routeId: rId,
+        routeName: r.routeName || '未分配路线',
+        totalCount: 0,
+        overdueCount: 0,
+        completedCount: 0,
+        avgEscalation: []
+      };
+    }
+    routeStats[rId].totalCount++;
+    if (r.isOverdue) routeStats[rId].overdueCount++;
+    if (r.status === '已完成') routeStats[rId].completedCount++;
+    if (r.escalationCount > 0) routeStats[rId].avgEscalation.push(r.escalationCount);
+  }
+
+  const routeSummary = Object.values(routeStats).map(rs => ({
+    ...rs,
+    overdueRate: rs.totalCount > 0 ? Number(((rs.overdueCount / rs.totalCount) * 100).toFixed(2)) : 0,
+    completionRate: rs.totalCount > 0 ? Number(((rs.completedCount / rs.totalCount) * 100).toFixed(2)) : 0,
+    avgEscalationCount: rs.avgEscalation.length > 0
+      ? Number((rs.avgEscalation.reduce((a, b) => a + b, 0) / rs.avgEscalation.length).toFixed(2))
+      : 0
+  }));
+
+  const restockerStats = {};
+  for (const r of enriched) {
+    if (!r.restockerId) continue;
+    if (!restockerStats[r.restockerId]) {
+      restockerStats[r.restockerId] = {
+        restockerId: r.restockerId,
+        restockerName: r.restockerName,
+        totalCount: 0,
+        overdueCount: 0,
+        completedCount: 0,
+        escalatedCount: 0
+      };
+    }
+    restockerStats[r.restockerId].totalCount++;
+    if (r.isOverdue) restockerStats[r.restockerId].overdueCount++;
+    if (r.status === '已完成') restockerStats[r.restockerId].completedCount++;
+    if (r.escalationCount > 0) restockerStats[r.restockerId].escalatedCount++;
+  }
+
+  const restockerSummary = Object.values(restockerStats).map(rs => ({
+    ...rs,
+    overdueRate: rs.totalCount > 0 ? Number(((rs.overdueCount / rs.totalCount) * 100).toFixed(2)) : 0,
+    completionRate: rs.totalCount > 0 ? Number(((rs.completedCount / rs.totalCount) * 100).toFixed(2)) : 0
+  })).sort((a, b) => b.overdueRate - a.overdueRate);
 
   res.json({
     total: enriched.length,
@@ -350,10 +434,25 @@ router.get('/rectification-summary', (req, res) => {
     underReviewCount,
     completedCount,
     reviewFailedCount,
+    overdueCount,
+    overduePendingCount,
+    overdueReviewCount,
+    overdueReopenCount,
+    overdueRate: enriched.length > 0 ? Number(((overdueCount / enriched.length) * 100).toFixed(2)) : 0,
+    overdueCompletionRate,
     avgDurationHours,
+    riskBreakdown: {
+      critical: criticalRiskCount,
+      high: highRiskCount,
+      medium: mediumRiskCount,
+      low: lowRiskCount
+    },
     byType,
     byStatus,
-    topMachines
+    byOverdueReason,
+    topMachines,
+    routeSummary,
+    restockerSummary
   });
 });
 

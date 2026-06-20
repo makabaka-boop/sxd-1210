@@ -3,6 +3,7 @@ const db = require('../db');
 const bcrypt = require('bcryptjs');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { generateId, getNowISO, getMachineInfo } = require('../utils/helpers');
+const { getAllTimeLimits, ANOMALY_TYPES, RECTIFICATION_TYPES } = require('../utils/timeLimitUtils');
 
 const router = express.Router();
 router.use(authMiddleware, requireRole('admin'));
@@ -305,6 +306,107 @@ router.delete('/machines/:id', (req, res) => {
   if (!machine) return res.status(404).json({ error: '机器不存在' });
 
   db.get('machines').remove({ id }).write();
+  res.json({ message: '删除成功' });
+});
+
+router.get('/rectification-time-limits/options', (req, res) => {
+  res.json({
+    anomalyTypes: Object.values(ANOMALY_TYPES),
+    anomalySeverities: ['low', 'medium', 'high'],
+    rectificationTypes: RECTIFICATION_TYPES,
+    scopes: [
+      { value: 'global', label: '全局默认' },
+      { value: 'anomalyType', label: '按异常类型' },
+      { value: 'anomalySeverity', label: '按异常严重程度' },
+      { value: 'rectificationType', label: '按整改类型' }
+    ]
+  });
+});
+
+router.get('/rectification-time-limits', (req, res) => {
+  const limits = getAllTimeLimits();
+  res.json(limits);
+});
+
+router.post('/rectification-time-limits', (req, res) => {
+  const { name, scope, scopeValue, rectifyHours, reviewHours, reopenRectifyHours, escalationHours, enabled } = req.body;
+
+  if (!name || !scope || !scopeValue) {
+    return res.status(400).json({ error: '名称、范围类型、范围值必填' });
+  }
+
+  const validScopes = ['global', 'anomalyType', 'anomalySeverity', 'rectificationType'];
+  if (!validScopes.includes(scope)) {
+    return res.status(400).json({ error: '无效的范围类型' });
+  }
+
+  if (rectifyHours === undefined || reviewHours === undefined) {
+    return res.status(400).json({ error: '整改时限和复核时限必填' });
+  }
+
+  if (scope === 'global' && scopeValue === 'default') {
+    const existingDefault = db.get('rectificationTimeLimits')
+      .find({ scope: 'global', scopeValue: 'default' })
+      .value();
+    if (existingDefault) {
+      return res.status(400).json({ error: '全局默认配置已存在，请修改而非新增' });
+    }
+  } else {
+    const existing = db.get('rectificationTimeLimits')
+      .find({ scope, scopeValue })
+      .value();
+    if (existing) {
+      return res.status(400).json({ error: '该范围配置已存在，请修改而非新增' });
+    }
+  }
+
+  const newLimit = {
+    id: generateId('tl'),
+    name,
+    scope,
+    scopeValue,
+    rectifyHours: Number(rectifyHours),
+    reviewHours: Number(reviewHours),
+    reopenRectifyHours: Number(reopenRectifyHours) || Number(rectifyHours),
+    escalationHours: Number(escalationHours) || Number(reviewHours),
+    enabled: enabled !== undefined ? enabled : true,
+    createdAt: getNowISO(),
+    updatedAt: getNowISO()
+  };
+
+  db.get('rectificationTimeLimits').push(newLimit).write();
+  res.status(201).json(newLimit);
+});
+
+router.put('/rectification-time-limits/:id', (req, res) => {
+  const { id } = req.params;
+  const { name, rectifyHours, reviewHours, reopenRectifyHours, escalationHours, enabled } = req.body;
+
+  const limit = db.get('rectificationTimeLimits').find({ id }).value();
+  if (!limit) return res.status(404).json({ error: '时限配置不存在' });
+
+  const updates = { updatedAt: getNowISO() };
+  if (name !== undefined) updates.name = name;
+  if (rectifyHours !== undefined) updates.rectifyHours = Number(rectifyHours);
+  if (reviewHours !== undefined) updates.reviewHours = Number(reviewHours);
+  if (reopenRectifyHours !== undefined) updates.reopenRectifyHours = Number(reopenRectifyHours);
+  if (escalationHours !== undefined) updates.escalationHours = Number(escalationHours);
+  if (enabled !== undefined) updates.enabled = enabled;
+
+  db.get('rectificationTimeLimits').find({ id }).assign(updates).write();
+  res.json({ message: '更新成功', limit: db.get('rectificationTimeLimits').find({ id }).value() });
+});
+
+router.delete('/rectification-time-limits/:id', (req, res) => {
+  const { id } = req.params;
+  const limit = db.get('rectificationTimeLimits').find({ id }).value();
+  if (!limit) return res.status(404).json({ error: '时限配置不存在' });
+
+  if (limit.scope === 'global' && limit.scopeValue === 'default') {
+    return res.status(400).json({ error: '全局默认配置不允许删除' });
+  }
+
+  db.get('rectificationTimeLimits').remove({ id }).write();
   res.json({ message: '删除成功' });
 });
 
