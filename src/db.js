@@ -1,0 +1,72 @@
+const low = require('lowdb');
+const FileSync = require('lowdb/adapters/FileSync');
+const path = require('path');
+const bcrypt = require('bcryptjs');
+const fs = require('fs');
+
+const dbDir = path.join(__dirname, '..', 'data');
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+}
+
+const adapter = new FileSync(path.join(dbDir, 'db.json'));
+const db = low(adapter);
+
+function initDatabase() {
+  const adminPassword = bcrypt.hashSync('admin123', 10);
+  const restockerPassword = bcrypt.hashSync('restock123', 10);
+  const inspectorPassword = bcrypt.hashSync('inspect123', 10);
+
+  db.defaults({
+    users: [
+      { id: 'user_admin_001', username: 'admin', password: adminPassword, role: 'admin', name: '系统管理员', createdAt: '2024-01-01T00:00:00Z' },
+      { id: 'user_restock_001', username: 'restocker', password: restockerPassword, role: 'restocker', name: '张三', createdAt: '2024-01-01T00:00:00Z' },
+      { id: 'user_restock_002', username: 'restocker2', password: restockerPassword, role: 'restocker', name: '李四', createdAt: '2024-01-01T00:00:00Z' },
+      { id: 'user_inspect_001', username: 'inspector', password: inspectorPassword, role: 'inspector', name: '王五', createdAt: '2024-01-01T00:00:00Z' }
+    ],
+    areas: [
+      { id: 'area_001', name: '华东区', description: '华东地区' },
+      { id: 'area_002', name: '华北区', description: '华北地区' },
+      { id: 'area_003', name: '华南区', description: '华南地区' }
+    ],
+    temperatureZones: [
+      { id: 'tz_001', name: '常温区', minTemp: 10, maxTemp: 30 },
+      { id: 'tz_002', name: '冷藏区', minTemp: 2, maxTemp: 8 },
+      { id: 'tz_003', name: '冷冻区', minTemp: -18, maxTemp: -10 }
+    ],
+    productGroups: [
+      { id: 'pg_001', name: '饮料类', description: '瓶装/罐装饮料' },
+      { id: 'pg_002', name: '零食类', description: '膨化食品、饼干等' },
+      { id: 'pg_003', name: '乳制品', description: '牛奶、酸奶等' },
+      { id: 'pg_004', name: '速食类', description: '方便面、便当等' }
+    ],
+    products: [
+      { id: 'prod_001', name: '可口可乐330ml', groupId: 'pg_001', shelfLifeDays: 180 },
+      { id: 'prod_002', name: '农夫山泉550ml', groupId: 'pg_001', shelfLifeDays: 365 },
+      { id: 'prod_003', name: '乐事薯片原味', groupId: 'pg_002', shelfLifeDays: 150 },
+      { id: 'prod_004', name: '奥利奥饼干', groupId: 'pg_002', shelfLifeDays: 270 },
+      { id: 'prod_005', name: '伊利纯牛奶250ml', groupId: 'pg_003', shelfLifeDays: 45 },
+      { id: 'prod_006', name: '康师傅红烧牛肉面', groupId: 'pg_004', shelfLifeDays: 180 }
+    ],
+    routes: [
+      { id: 'route_001', name: 'A路线', description: '市中心东部', restockerId: 'user_restock_001' },
+      { id: 'route_002', name: 'B路线', description: '市中心西部', restockerId: 'user_restock_002' }
+    ],
+    machines: [
+      { id: 'VM001', name: '1号机', areaId: 'area_001', routeId: 'route_001', temperatureZoneId: 'tz_001', inspectionCycleDays: 7, threshold: 20, status: 'active', createdAt: '2024-01-01T00:00:00Z' },
+      { id: 'VM002', name: '2号机', areaId: 'area_001', routeId: 'route_001', temperatureZoneId: 'tz_002', inspectionCycleDays: 3, threshold: 15, status: 'active', createdAt: '2024-01-01T00:00:00Z' },
+      { id: 'VM003', name: '3号机', areaId: 'area_002', routeId: 'route_002', temperatureZoneId: 'tz_001', inspectionCycleDays: 7, threshold: 25, status: 'active', createdAt: '2024-01-01T00:00:00Z' },
+      { id: 'VM004', name: '4号机', areaId: 'area_003', routeId: 'route_002', temperatureZoneId: 'tz_003', inspectionCycleDays: 2, threshold: 10, status: 'active', createdAt: '2024-01-01T00:00:00Z' }
+    ],
+    tasks: [],
+    restockRecords: [],
+    temperatureRecords: [],
+    expiredRemovals: [],
+    inspections: [],
+    anomalies: []
+  }).write();
+}
+
+initDatabase();
+
+module.exports = db;
