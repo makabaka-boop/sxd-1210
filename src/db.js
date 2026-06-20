@@ -63,7 +63,8 @@ function initDatabase() {
     temperatureRecords: [],
     expiredRemovals: [],
     inspections: [],
-    anomalies: []
+    anomalies: [],
+    rectifications: []
   }).write();
 }
 

@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { getDateString, daysBetween, getMachineInfo } = require('../utils/helpers');
+const { enrichRectification } = require('./rectifications');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -275,6 +276,201 @@ router.get('/overview', (req, res) => {
     unresolvedAnomalies: anomalies.length,
     anomalyBreakdown
   });
+});
+
+router.get('/rectification-summary', (req, res) => {
+  const { startDate, endDate, areaId, routeId } = req.query;
+
+  let rectifications = db.get('rectifications').value();
+  let enriched = rectifications.map(r => enrichRectification(r));
+
+  if (areaId) {
+    enriched = enriched.filter(r => r.areaId === areaId);
+  }
+  if (routeId) {
+    enriched = enriched.filter(r => r.routeId === routeId);
+  }
+  if (startDate) {
+    enriched = enriched.filter(r => new Date(r.createdAt) >= new Date(startDate));
+  }
+  if (endDate) {
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+    enriched = enriched.filter(r => new Date(r.createdAt) <= end);
+  }
+
+  const pendingCount = enriched.filter(r => r.status === '待整改' || r.status === '整改中').length;
+  const completedCount = enriched.filter(r => r.status === '已完成').length;
+  const reviewFailedCount = enriched.filter(r => r.status === '复核不通过').length;
+  const underReviewCount = enriched.filter(r => r.status === '待复核').length;
+
+  const completedRects = enriched.filter(r => r.status === '已完成' && r.submittedAt && r.createdAt);
+  const avgDurationHours = completedRects.length > 0
+    ? Number((completedRects.reduce((sum, r) => {
+        const hours = (new Date(r.submittedAt) - new Date(r.createdAt)) / (1000 * 60 * 60);
+        return sum + hours;
+      }, 0) / completedRects.length).toFixed(2))
+    : 0;
+
+  const byType = {};
+  const byStatus = {};
+  for (const r of enriched) {
+    byType[r.rectificationType] = (byType[r.rectificationType] || 0) + 1;
+    byStatus[r.status] = (byStatus[r.status] || 0) + 1;
+  }
+
+  const machineStats = {};
+  for (const r of enriched) {
+    if (!machineStats[r.machineId]) {
+      machineStats[r.machineId] = {
+        machineId: r.machineId,
+        machineName: r.machineName,
+        areaId: r.areaId,
+        areaName: r.areaName,
+        routeName: r.routeName,
+        totalCount: 0,
+        pendingCount: 0,
+        completedCount: 0,
+        reviewFailedCount: 0
+      };
+    }
+    machineStats[r.machineId].totalCount++;
+    if (r.status === '待整改' || r.status === '整改中') machineStats[r.machineId].pendingCount++;
+    if (r.status === '已完成') machineStats[r.machineId].completedCount++;
+    if (r.status === '复核不通过') machineStats[r.machineId].reviewFailedCount++;
+  }
+
+  const topMachines = Object.values(machineStats)
+    .sort((a, b) => b.totalCount - a.totalCount)
+    .slice(0, 10);
+
+  res.json({
+    total: enriched.length,
+    pendingCount,
+    underReviewCount,
+    completedCount,
+    reviewFailedCount,
+    avgDurationHours,
+    byType,
+    byStatus,
+    topMachines
+  });
+});
+
+router.get('/rectification-details', (req, res) => {
+  const {
+    areaId, routeId, machineId, restockerId, status,
+    startDate, endDate, rectificationType, page, pageSize
+  } = req.query;
+
+  let rectifications = db.get('rectifications').value();
+
+  if (machineId) rectifications = rectifications.filter(r => r.machineId === machineId);
+  if (restockerId) rectifications = rectifications.filter(r => r.restockerId === restockerId);
+  if (status) rectifications = rectifications.filter(r => r.status === status);
+  if (rectificationType) rectifications = rectifications.filter(r => r.rectificationType === rectificationType);
+
+  if (startDate) {
+    rectifications = rectifications.filter(r => new Date(r.createdAt) >= new Date(startDate));
+  }
+  if (endDate) {
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+    rectifications = rectifications.filter(r => new Date(r.createdAt) <= end);
+  }
+
+  let enriched = rectifications.map(r => enrichRectification(r));
+
+  if (areaId) {
+    enriched = enriched.filter(r => r.areaId === areaId);
+  }
+  if (routeId) {
+    enriched = enriched.filter(r => r.routeId === routeId);
+  }
+
+  enriched.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  const currentPage = parseInt(page) || 1;
+  const size = parseInt(pageSize) || 50;
+  const total = enriched.length;
+  const totalPages = Math.ceil(total / size);
+  const paginated = enriched.slice((currentPage - 1) * size, currentPage * size);
+
+  res.json({
+    total,
+    totalPages,
+    currentPage,
+    pageSize: size,
+    data: paginated
+  });
+});
+
+router.get('/high-frequency-rectification-machines', (req, res) => {
+  const { startDate, endDate, areaId, topN } = req.query;
+  const topCount = parseInt(topN) || 10;
+
+  let rectifications = db.get('rectifications').value();
+  let enriched = rectifications.map(r => enrichRectification(r));
+
+  if (areaId) {
+    enriched = enriched.filter(r => r.areaId === areaId);
+  }
+  if (startDate) {
+    enriched = enriched.filter(r => new Date(r.createdAt) >= new Date(startDate));
+  }
+  if (endDate) {
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+    enriched = enriched.filter(r => new Date(r.createdAt) <= end);
+  }
+
+  const machineStats = {};
+  for (const r of enriched) {
+    if (!machineStats[r.machineId]) {
+      machineStats[r.machineId] = {
+        machineId: r.machineId,
+        machineName: r.machineName,
+        areaId: r.areaId,
+        areaName: r.areaName,
+        routeName: r.routeName,
+        restockerId: r.restockerId,
+        restockerName: r.restockerName,
+        totalCount: 0,
+        completedCount: 0,
+        reviewFailedCount: 0,
+        rectificationTypes: {},
+        durations: []
+      };
+    }
+    machineStats[r.machineId].totalCount++;
+    machineStats[r.machineId].rectificationTypes[r.rectificationType] =
+      (machineStats[r.machineId].rectificationTypes[r.rectificationType] || 0) + 1;
+
+    if (r.status === '已完成') {
+      machineStats[r.machineId].completedCount++;
+      if (r.submittedAt && r.createdAt) {
+        const hours = (new Date(r.submittedAt) - new Date(r.createdAt)) / (1000 * 60 * 60);
+        machineStats[r.machineId].durations.push(hours);
+      }
+    }
+    if (r.status === '复核不通过') {
+      machineStats[r.machineId].reviewFailedCount++;
+    }
+  }
+
+  const result = Object.values(machineStats).map(stat => ({
+    ...stat,
+    avgDurationHours: stat.durations.length > 0
+      ? Number((stat.durations.reduce((a, b) => a + b, 0) / stat.durations.length).toFixed(2))
+      : null,
+    completionRate: stat.totalCount > 0
+      ? Number(((stat.completedCount / stat.totalCount) * 100).toFixed(2))
+      : 0
+  }));
+
+  result.sort((a, b) => b.totalCount - a.totalCount);
+
+  res.json(result.slice(0, topCount));
 });
 
 module.exports = router;

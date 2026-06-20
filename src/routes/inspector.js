@@ -3,6 +3,7 @@ const db = require('../db');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { generateId, getNowISO, getMachineInfo } = require('../utils/helpers');
 const { detectAndSave } = require('../utils/anomalyDetector');
+const { createRectification } = require('./rectifications');
 
 const router = express.Router();
 router.use(authMiddleware, requireRole('inspector', 'admin'));
@@ -80,11 +81,12 @@ router.post('/tasks/:id/inspect', (req, res) => {
 
   db.get('inspections').push(inspection).write();
 
+  let rectification = null;
   let newStatus = '已完成';
-  if (conclusion === '待整改') {
-    newStatus = '补货中';
-  } else if (conclusion === '不合格') {
-    newStatus = '缺品预警';
+
+  if (conclusion === '待整改' || conclusion === '不合格') {
+    rectification = createRectification(id, inspection.id, req.user.id);
+    newStatus = '整改中';
   }
 
   db.get('tasks')
@@ -94,15 +96,17 @@ router.post('/tasks/:id/inspect', (req, res) => {
       inspected: true,
       inspectedAt: getNowISO(),
       inspectionConclusion: conclusion,
-      inspectionScore: score !== undefined ? Number(score) : null
+      inspectionScore: score !== undefined ? Number(score) : null,
+      rectificationId: rectification ? rectification.id : null
     })
     .write();
 
   setTimeout(() => detectAndSave(), 100);
 
   res.status(201).json({
-    message: '抽检记录已提交',
+    message: rectification ? '抽检记录已提交，已自动生成整改记录' : '抽检记录已提交',
     inspection,
+    rectification,
     task: db.get('tasks').find({ id }).value()
   });
 });

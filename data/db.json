@@ -190,10 +190,133 @@
       "createdAt": "2024-01-01T00:00:00Z"
     }
   ],
-  "tasks": [],
-  "restockRecords": [],
-  "temperatureRecords": [],
+  "tasks": [
+    {
+      "id": "task_85bbabc7",
+      "machineId": "VM001",
+      "routeId": "route_001",
+      "assigneeId": "user_restock_001",
+      "status": "已完成",
+      "window": "早班",
+      "scheduledTime": "2026-06-20T03:10:55.417Z",
+      "arrivedTime": "2026-06-20T03:10:55.509Z",
+      "completedTime": "2026-06-20T03:10:55.622Z",
+      "inspected": true,
+      "note": "",
+      "createdBy": "user_admin_001",
+      "createdAt": "2026-06-20T03:10:55.417Z",
+      "arrivePhotoUrl": null,
+      "finalNote": "",
+      "completePhotoUrl": null,
+      "rectificationId": "rect_9817b717",
+      "inspectedAt": "2026-06-20T03:11:06.178Z",
+      "inspectionConclusion": "待整改",
+      "inspectionScore": 60,
+      "rectificationCompleted": true
+    }
+  ],
+  "restockRecords": [
+    {
+      "id": "restock_d024e079",
+      "taskId": "task_85bbabc7",
+      "machineId": "VM001",
+      "items": [
+        {
+          "productId": "prod_001",
+          "productName": "可口可乐330ml",
+          "restockQuantity": 10,
+          "shortageQuantity": 0,
+          "shortageReason": ""
+        }
+      ],
+      "note": "",
+      "photoUrl": null,
+      "operatorId": "user_restock_001",
+      "createdAt": "2026-06-20T03:10:55.547Z"
+    }
+  ],
+  "temperatureRecords": [
+    {
+      "id": "temp_8c374cac",
+      "taskId": "task_85bbabc7",
+      "machineId": "VM001",
+      "temperature": 20,
+      "zoneId": "tz_001",
+      "zoneName": "常温区",
+      "isAbnormal": false,
+      "minTemp": 10,
+      "maxTemp": 30,
+      "note": "",
+      "photoUrl": null,
+      "operatorId": "user_restock_001",
+      "createdAt": "2026-06-20T03:10:55.589Z"
+    }
+  ],
   "expiredRemovals": [],
-  "inspections": [],
-  "anomalies": []
+  "inspections": [
+    {
+      "id": "inspect_fc8e6234",
+      "taskId": "task_85bbabc7",
+      "machineId": "VM001",
+      "conclusion": "待整改",
+      "rectificationSuggestion": "请补充饮料类商品库存，并重新检查温区温度",
+      "score": 60,
+      "temperatureCheckPassed": false,
+      "expiredCheckPassed": true,
+      "stockCheckPassed": false,
+      "photoUrl": null,
+      "note": "",
+      "inspectorId": "user_inspect_001",
+      "inspectorName": "王五",
+      "createdAt": "2026-06-20T03:11:06.177Z"
+    }
+  ],
+  "anomalies": [],
+  "rectifications": [
+    {
+      "id": "rect_9817b717",
+      "taskId": "task_85bbabc7",
+      "machineId": "VM001",
+      "restockerId": "user_restock_001",
+      "inspectorId": "user_inspect_001",
+      "inspectionId": "inspect_fc8e6234",
+      "status": "已完成",
+      "rectificationType": "待整改",
+      "rectificationSuggestion": "请补充饮料类商品库存，并重新检查温区温度",
+      "submittedDescription": "已补充饮料类库存，并调整温区温度至正常范围",
+      "submittedPhotos": [
+        "https://example.com/photo1.jpg",
+        "https://example.com/photo2.jpg"
+      ],
+      "submittedRestockItems": [
+        {
+          "productId": "prod_001",
+          "productName": "可口可乐330ml",
+          "restockQuantity": 20,
+          "shortageQuantity": 0,
+          "shortageReason": ""
+        }
+      ],
+      "submittedTempRecords": [
+        {
+          "id": "rect_temp_c16ca076",
+          "temperature": 22,
+          "zoneId": "tz_001",
+          "zoneName": "常温区",
+          "isAbnormal": false,
+          "minTemp": 10,
+          "maxTemp": 30,
+          "note": "温度已调整正常",
+          "photoUrl": null,
+          "measuredAt": "2026-06-20T03:11:16.681Z"
+        }
+      ],
+      "submittedAt": "2026-06-20T03:11:16.681Z",
+      "reviewConclusion": "通过",
+      "reviewNote": "整改到位，已完成",
+      "reviewedBy": "user_inspect_001",
+      "reviewedAt": "2026-06-20T03:11:28.247Z",
+      "createdAt": "2026-06-20T03:11:06.178Z"
+    }
+  ]
 }

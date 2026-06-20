@@ -3,6 +3,7 @@ const db = require('../db');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { getNowISO } = require('../utils/helpers');
 const { detectAndSave, runAllDetectors } = require('../utils/anomalyDetector');
+const { enrichRectification } = require('./rectifications');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -19,7 +20,7 @@ router.post('/detect', requireRole('admin'), (req, res) => {
 
 // 查询异常列表
 router.get('/', (req, res) => {
-  const { type, severity, resolved, machineId, startDate, endDate } = req.query;
+  const { type, severity, resolved, machineId, startDate, endDate, rectificationStatus } = req.query;
   let anomalies = db.get('anomalies').value();
 
   if (type) anomalies = anomalies.filter(a => a.type === type);
@@ -35,8 +36,33 @@ router.get('/', (req, res) => {
     anomalies = anomalies.filter(a => new Date(a.createdAt) <= end);
   }
 
-  anomalies.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  res.json(anomalies);
+  const rectifications = db.get('rectifications').value();
+
+  const enriched = anomalies.map(a => {
+    const relatedRects = rectifications.filter(r =>
+      r.taskId === a.taskId || r.machineId === a.machineId
+    );
+    const enrichedRects = relatedRects.map(r => enrichRectification(r));
+    const latestRect = enrichedRects.length > 0
+      ? enrichedRects.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0]
+      : null;
+
+    return {
+      ...a,
+      rectificationCount: enrichedRects.length,
+      rectificationStatus: latestRect ? latestRect.status : null,
+      rectificationId: latestRect ? latestRect.id : null,
+      rectifications: enrichedRects
+    };
+  });
+
+  let result = enriched;
+  if (rectificationStatus) {
+    result = enriched.filter(a => a.rectificationStatus === rectificationStatus);
+  }
+
+  result.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  res.json(result);
 });
 
 // 标记异常为已解决
@@ -66,6 +92,7 @@ router.put('/:id/resolve', requireRole('admin', 'inspector'), (req, res) => {
 // 获取异常统计概览
 router.get('/summary', (req, res) => {
   const anomalies = db.get('anomalies').value();
+  const rectifications = db.get('rectifications').value();
   const unresolved = anomalies.filter(a => !a.resolved);
 
   const byType = {};
@@ -81,21 +108,33 @@ router.get('/summary', (req, res) => {
   const topMachines = Object.entries(byMachine)
     .map(([machineId, count]) => {
       const machine = db.get('machines').find({ id: machineId }).value();
+      const machineRects = rectifications.filter(r => r.machineId === machineId);
+      const latestRect = machineRects.length > 0
+        ? machineRects.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0]
+        : null;
       return {
         machineId,
         machineName: machine ? machine.name : machineId,
-        count
+        count,
+        rectificationCount: machineRects.length,
+        rectificationStatus: latestRect ? latestRect.status : null
       };
     })
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
+
+  const rectStats = {};
+  for (const r of rectifications) {
+    rectStats[r.status] = (rectStats[r.status] || 0) + 1;
+  }
 
   res.json({
     total: anomalies.length,
     unresolved: unresolved.length,
     byType,
     bySeverity,
-    topMachines
+    topMachines,
+    rectificationStats: rectStats
   });
 });
 

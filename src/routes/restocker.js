@@ -44,7 +44,7 @@ router.post('/tasks/:id/arrive', (req, res) => {
     return res.status(403).json({ error: '无权限操作此任务' });
   }
 
-  if (!['待补货', '缺品预警'].includes(task.status)) {
+  if (!['待补货', '缺品预警', '整改中'].includes(task.status)) {
     return res.status(400).json({ error: '当前任务状态不允许执行到达操作' });
   }
 
@@ -79,7 +79,7 @@ router.post('/tasks/:id/restock', (req, res) => {
     return res.status(403).json({ error: '无权限操作此任务' });
   }
 
-  if (task.status !== '补货中') {
+  if (task.status !== '补货中' && task.status !== '整改中') {
     return res.status(400).json({ error: '请先执行到达操作' });
   }
 
@@ -136,7 +136,7 @@ router.post('/tasks/:id/expired-removal', (req, res) => {
     return res.status(403).json({ error: '无权限操作此任务' });
   }
 
-  if (!['补货中', '缺品预警'].includes(task.status)) {
+  if (!['补货中', '缺品预警', '整改中'].includes(task.status)) {
     return res.status(400).json({ error: '当前任务状态不允许此操作' });
   }
 
@@ -187,7 +187,7 @@ router.post('/tasks/:id/temperature', (req, res) => {
     return res.status(403).json({ error: '无权限操作此任务' });
   }
 
-  if (!['补货中', '缺品预警'].includes(task.status)) {
+  if (!['补货中', '缺品预警', '整改中'].includes(task.status)) {
     return res.status(400).json({ error: '当前任务状态不允许此操作' });
   }
 
@@ -244,7 +244,7 @@ router.post('/tasks/:id/complete', (req, res) => {
     return res.status(403).json({ error: '无权限操作此任务' });
   }
 
-  if (!['补货中', '缺品预警', '温区异常'].includes(task.status)) {
+  if (!['补货中', '缺品预警', '温区异常', '整改中'].includes(task.status)) {
     return res.status(400).json({ error: '当前任务状态不允许提交完成' });
   }
 

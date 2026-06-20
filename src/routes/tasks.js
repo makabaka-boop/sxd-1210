@@ -3,11 +3,12 @@ const db = require('../db');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { generateId, getNowISO, getDateString, getMachineInfo } = require('../utils/helpers');
 const { detectAndSave, TASK_STATUS } = require('../utils/anomalyDetector');
+const { enrichRectification } = require('./rectifications');
 
 const router = express.Router();
 router.use(authMiddleware);
 
-const VALID_STATUSES = ['待补货', '补货中', '待抽检', '温区异常', '缺品预警', '已完成', '暂停运营'];
+const VALID_STATUSES = ['待补货', '补货中', '待抽检', '温区异常', '缺品预警', '已完成', '暂停运营', '整改中', '整改待复核'];
 const VALID_WINDOWS = ['早班', '中班', '晚班'];
 
 function enrichTask(task) {
@@ -240,13 +241,16 @@ router.get('/:id', (req, res) => {
   const temperatureRecords = db.get('temperatureRecords').filter({ taskId: id }).value();
   const expiredRemovals = db.get('expiredRemovals').filter({ taskId: id }).value();
   const inspections = db.get('inspections').filter({ taskId: id }).value();
+  const rectifications = db.get('rectifications').filter({ taskId: id }).value();
+  const enrichedRectifications = rectifications.map(r => enrichRectification(r));
 
   res.json({
     ...enriched,
     restockRecords,
     temperatureRecords,
     expiredRemovals,
-    inspections
+    inspections,
+    rectifications: enrichedRectifications
   });
 });
 

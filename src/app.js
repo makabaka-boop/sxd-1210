@@ -9,6 +9,7 @@ const restockerRoutes = require('./routes/restocker');
 const inspectorRoutes = require('./routes/inspector');
 const anomalyRoutes = require('./routes/anomalies');
 const reportRoutes = require('./routes/reports');
+const { router: rectificationRoutes } = require('./routes/rectifications');
 
 const { detectAndSave } = require('./utils/anomalyDetector');
 
@@ -18,6 +19,7 @@ const PORT = process.env.PORT || 8142;
 app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.static('public'));
 
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
@@ -36,7 +38,8 @@ app.get('/', (req, res) => {
       restocker: '/api/restocker',
       inspector: '/api/inspector',
       anomalies: '/api/anomalies',
-      reports: '/api/reports'
+      reports: '/api/reports',
+      rectifications: '/api/rectifications'
     },
     defaultAccounts: {
       admin: { username: 'admin', password: 'admin123', role: '平台管理员' },
@@ -53,6 +56,7 @@ app.use('/api/restocker', restockerRoutes);
 app.use('/api/inspector', inspectorRoutes);
 app.use('/api/anomalies', anomalyRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/rectifications', rectificationRoutes);
 
 app.use((err, req, res, next) => {
   console.error('Error:', err);
