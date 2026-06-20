@@ -304,10 +304,10 @@ router.get('/rectification-summary', (req, res) => {
   const reviewFailedCount = enriched.filter(r => r.status === '复核不通过').length;
   const underReviewCount = enriched.filter(r => r.status === '待复核').length;
 
-  const completedRects = enriched.filter(r => r.status === '已完成' && r.submittedAt && r.createdAt);
+  const completedRects = enriched.filter(r => r.status === '已完成' && r.reviewedAt && r.createdAt);
   const avgDurationHours = completedRects.length > 0
     ? Number((completedRects.reduce((sum, r) => {
-        const hours = (new Date(r.submittedAt) - new Date(r.createdAt)) / (1000 * 60 * 60);
+        const hours = (new Date(r.reviewedAt) - new Date(r.createdAt)) / (1000 * 60 * 60);
         return sum + hours;
       }, 0) / completedRects.length).toFixed(2))
     : 0;
@@ -448,8 +448,8 @@ router.get('/high-frequency-rectification-machines', (req, res) => {
 
     if (r.status === '已完成') {
       machineStats[r.machineId].completedCount++;
-      if (r.submittedAt && r.createdAt) {
-        const hours = (new Date(r.submittedAt) - new Date(r.createdAt)) / (1000 * 60 * 60);
+      if (r.reviewedAt && r.createdAt) {
+        const hours = (new Date(r.reviewedAt) - new Date(r.createdAt)) / (1000 * 60 * 60);
         machineStats[r.machineId].durations.push(hours);
       }
     }

@@ -30,9 +30,13 @@ function enrichRectification(rect) {
     reviewerName: reviewer ? reviewer.name : null,
     taskStatus: task ? task.status : null,
     inspectionConclusion: inspection ? inspection.conclusion : null,
-    rectificationDuration: rect.submittedAt && rect.createdAt
-      ? Math.round((new Date(rect.submittedAt) - new Date(rect.createdAt)) / (1000 * 60 * 60))
-      : null
+    rectificationDuration: (() => {
+      const created = rect.createdAt ? new Date(rect.createdAt) : null;
+      if (!created) return null;
+      const end = rect.reviewedAt ? new Date(rect.reviewedAt) : (rect.submittedAt ? new Date(rect.submittedAt) : null);
+      if (!end) return null;
+      return Math.round((end - created) / (1000 * 60 * 60));
+    })()
   };
 }
 
@@ -93,7 +97,7 @@ router.get('/my-completed', requireRole('restocker', 'admin'), (req, res) => {
   const { startDate, endDate } = req.query;
   let rectifications = db.get('rectifications')
     .filter(r =>
-      r.status !== '待整改' && r.status !== '整改中' &&
+      (r.status === '已完成' || r.status === '复核不通过') &&
       (r.restockerId === req.user.id || req.user.role === 'admin')
     )
     .value();

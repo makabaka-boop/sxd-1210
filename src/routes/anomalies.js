@@ -39,9 +39,10 @@ router.get('/', (req, res) => {
   const rectifications = db.get('rectifications').value();
 
   const enriched = anomalies.map(a => {
-    const relatedRects = rectifications.filter(r =>
-      r.taskId === a.taskId || r.machineId === a.machineId
-    );
+    let relatedRects = [];
+    if (a.taskId) {
+      relatedRects = rectifications.filter(r => r.taskId === a.taskId);
+    }
     const enrichedRects = relatedRects.map(r => enrichRectification(r));
     const latestRect = enrichedRects.length > 0
       ? enrichedRects.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0]
